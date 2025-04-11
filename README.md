@@ -24,7 +24,7 @@ HybridTrack introduces a **learnable Kalman filter** that dynamically adjusts mo
 
 > 📌 *A schematic of the HybridTrack architecture will be added here.*
 
-![Method Architecture Placeholder](mdoel_architecture_11.png)
+![Method Architecture Placeholder](mdoel_architecture_11.jpg)
 
 ---
 
