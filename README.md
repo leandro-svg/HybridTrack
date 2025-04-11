@@ -17,7 +17,11 @@ HybridTrack introduces a **learnable Kalman filter** that dynamically adjusts mo
 - **82.08% HOTA** – Higher Order Tracking Accuracy
 - **112 FPS** – Real-time tracking speed
 - **Superior generalization** to various scenarios without agent-specific modeling
+---
 
+## 🎞️ Example Results
+
+![Tracking Results Placeholder](hybridtrack_demo.gif)
 ---
 
 ## 📐 Method Architecture
@@ -26,13 +30,6 @@ HybridTrack introduces a **learnable Kalman filter** that dynamically adjusts mo
 
 ![Method Architecture Placeholder](model_architecture_11.jpg)
 
----
-
-## 🎞️ Example Results
-
-> 📌 *Example visualizations and qualitative tracking results will be provided here.*
-
-![Tracking Results Placeholder](hybridtrack_demo.gif)
 
 ---
 
