@@ -79,9 +79,12 @@ HybridTrack is evaluated on the [KITTI Tracking Benchmark](https://www.cvlibs.ne
 If you use HybridTrack in your research, please consider citing:
 
 ```bibtex
-@article{dibella2025hybridtrack,
-  title={HybridTrack: A Hybrid Approach for Robust Multi-Object Tracking},
-  author={Di Bella, Leandro and Lyu, Yangxintong and Cornelis, Bruno and Munteanu, Adrian},
-  journal={arXiv preprint arXiv:2501.01275},
-  year={2025}
+@misc{dibella2025hybridtrackhybridapproachrobust,
+      title={HybridTrack: A Hybrid Approach for Robust Multi-Object Tracking}, 
+      author={Leandro Di Bella and Yangxintong Lyu and Bruno Cornelis and Adrian Munteanu},
+      year={2025},
+      eprint={2501.01275},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2501.01275}, 
 }
