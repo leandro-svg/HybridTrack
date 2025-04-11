@@ -32,7 +32,7 @@ HybridTrack introduces a **learnable Kalman filter** that dynamically adjusts mo
 
 > 📌 *Example visualizations and qualitative tracking results will be provided here.*
 
-![Tracking Results Placeholder](hybridtrack_demo.gif)
+![Tracking Results Placeholder](hybridtrack_demo.mp4)
 
 ---
 
