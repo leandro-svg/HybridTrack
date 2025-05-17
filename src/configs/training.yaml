@@ -1,0 +1,39 @@
+DEVICE: "cuda:0"
+
+MODEL:
+  TYPE: "SingleResCrossModelZ"
+  SAVE_PATH: "src/result/hybridtrack/online/model_checkpoint/hybridtrack.pt"
+
+DATASET:
+  NAME: "KITTIDataset"
+  ROOT: "/home/leandro/Documents/HybridTrack/HybridTrack"
+  MODE: "train"
+  RESIZE: 256
+  N_PCD: 1000
+  SEQ_LEN: 20
+  SEQ_STRIDE: 1
+  RATIO_DATASET: 100
+  CLASS: "Car"
+
+SOLVER:
+  OPTIM: "ADAM"
+  LR_SCHEDULE: "cosine"
+
+TRAINER:
+  EPOCH: 4000         # n_steps
+  LR: 0.001           # learning rate
+  WD: 0.00001         # weight decay
+  BATCH_SIZE: 128     # n_batch
+  USE_CUDA: true
+  ALPHA: 1.0
+  RELATIVE_LOSS: false
+  TEMPORAL_LOSS: false
+  T_TEST: 20
+  IN_MULT_KNET: 1
+  OUT_MULT_KNET: 1
+  N_TEST: 870
+  N_CV: 870
+  RANDOMINIT_CV: false
+  ONLINE_TRACKING: true
+
+OUTPUT: "result"

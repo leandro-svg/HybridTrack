@@ -1,0 +1,6 @@
+.vscode/
+__pycache__/
+
+src/result
+src/evaluator/evaluation/results
+src/data
