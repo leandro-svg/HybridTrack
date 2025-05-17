@@ -20,7 +20,7 @@ SOLVER:
   LR_SCHEDULE: "cosine"
 
 TRAINER:
-  EPOCH: 4000         # n_steps
+  EPOCH: 1500         # n_steps
   LR: 0.001           # learning rate
   WD: 0.00001         # weight decay
   BATCH_SIZE: 128     # n_batch
