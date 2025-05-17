@@ -53,6 +53,14 @@ HybridTrack is evaluated on the [KITTI Tracking Benchmark](https://www.cvlibs.ne
 
 
 
+## 🧩 Acknowledgements
+
+This repository builds upon the following open-source projects:
+- [KalmanNet_TSP](https://github.com/KalmanNet/KalmanNet_TSP)
+- [3D-Multi-Object-Tracker](https://github.com/hailanyi/3D-Multi-Object-Tracker)
+
+We thank the authors for their valuable contributions to the community.
+
 ## 📜 Citation
 If you use HybridTrack in your research, please consider citing:
 
