@@ -83,11 +83,11 @@ class HYBRIDTRACK:
         self.learnableKF = LEARNABLEKF(sys_model, this_config)
         self.learnableKF = torch.load(self.config.model_checkpoint, map_location=self.device)
         self.learnableKF = self.learnableKF.to(self.device)
-        self.learnableKF.KNet_model.init_hidden_KNet()
+        self.learnableKF.LKF_model.init_hidden_LKF()
         ones_init = torch.ones((self.batch_size, self.track_dim, 1), device=self.device)
-        self.learnableKF.KNet_model.InitSequence(ones_init, 0)
-        self.learnableKF.KNet_model.m1y = ones_init.clone()
-        self.learnableKF.KNet_model.m1x_prior = ones_init.clone()
+        self.learnableKF.LKF_model.InitSequence(ones_init, 0)
+        self.learnableKF.LKF_model.m1y = ones_init.clone()
+        self.learnableKF.LKF_model.m1x_prior = ones_init.clone()
 
     def _pipeline(self) -> Tuple[torch.Tensor, torch.Tensor]:
         self._trajectories_prediction_step()
@@ -134,15 +134,15 @@ class HYBRIDTRACK:
                 continue
             if len(traj) - traj.consecutive_missed_num == 1 and len(traj) >= self.config.max_prediction_num_for_new_object:
                 dead_track_id.append(key)
-            adjusted_state = traj.state_prediction(self.current_timestamp, self.learnableKF.KNet_model.m1x_prior[traj.label])
-            self.learnableKF.KNet_model.m1x_prior[traj.label] = adjusted_state.unsqueeze(1)
-            self.learnableKF.KNet_model.m1y[traj.label] = adjusted_state.unsqueeze(1)
+            adjusted_state = traj.state_prediction(self.current_timestamp, self.learnableKF.LKF_model.m1x_prior[traj.label])
+            self.learnableKF.LKF_model.m1x_prior[traj.label] = adjusted_state.unsqueeze(1)
+            self.learnableKF.LKF_model.m1y[traj.label] = adjusted_state.unsqueeze(1)
         for id in dead_track_id:
             self.dead_trajectories[id] = self.active_trajectories.pop(id)
 
     def _lkf_prediction(self):
         with torch.no_grad():
-            self.learnableKF.KNet_model.step_prior()
+            self.learnableKF.LKF_model.step_prior()
 
     def _compute_cost_map(self):
         all_ids, all_predictions, all_detections = [], [], []
@@ -192,7 +192,7 @@ class HYBRIDTRACK:
 
     def _trajectories_update(self, ids):
         assert len(ids) == len(self.current_bbs), "IDs length must match current bounding boxes length"
-        detected_state_template = self.learnableKF.KNet_model.m1x_prior.squeeze(2)
+        detected_state_template = self.learnableKF.LKF_model.m1x_prior.squeeze(2)
         for i, label in enumerate(ids):
             box = self.current_bbs[i]
             score = self.current_scores[i]
@@ -203,16 +203,16 @@ class HYBRIDTRACK:
     def _lkf_update_step(self, detected_state_template):
         with torch.no_grad():
             detected_state_template = detected_state_template.to(self.device)
-            self.learnableKF.KNet_model.y_previous = self.learnableKF.KNet_model.y_previous.to(self.device)
-            self.learnableKF.KNet_model.step_KGain_est(detected_state_template)
-            self.learnableKF.KNet_model.m1x_prior_previous = self.learnableKF.KNet_model.m1x_prior
-            KF_gain = self.learnableKF.KNet_model.KGain
-            dy = detected_state_template.unsqueeze(2) - self.learnableKF.KNet_model.m1y
+            self.learnableKF.LKF_model.y_previous = self.learnableKF.LKF_model.y_previous.to(self.device)
+            self.learnableKF.LKF_model.step_KGain_est(detected_state_template)
+            self.learnableKF.LKF_model.m1x_prior_previous = self.learnableKF.LKF_model.m1x_prior
+            KF_gain = self.learnableKF.LKF_model.KGain
+            dy = detected_state_template.unsqueeze(2) - self.learnableKF.LKF_model.m1y
             INOV = torch.bmm(KF_gain, dy)
-            self.learnableKF.KNet_model.m1x_posterior_previous_previous = self.learnableKF.KNet_model.m1x_posterior_previous
-            self.learnableKF.KNet_model.m1x_posterior_previous = self.learnableKF.KNet_model.m1x_posterior
-            self.learnableKF.KNet_model.m1x_posterior = self.learnableKF.KNet_model.m1x_prior + INOV
-            self.learnableKF.KNet_model.y_previous = detected_state_template.unsqueeze(-1)
+            self.learnableKF.LKF_model.m1x_posterior_previous_previous = self.learnableKF.LKF_model.m1x_posterior_previous
+            self.learnableKF.LKF_model.m1x_posterior_previous = self.learnableKF.LKF_model.m1x_posterior
+            self.learnableKF.LKF_model.m1x_posterior = self.learnableKF.LKF_model.m1x_prior + INOV
+            self.learnableKF.LKF_model.y_previous = detected_state_template.unsqueeze(-1)
 
     def _trajectorie_init(self, ids):
         assert len(ids) == len(self.current_bbs), "IDs length must match current bounding boxes length"
@@ -223,7 +223,7 @@ class HYBRIDTRACK:
             score = self.current_scores[i]
             if label in self.active_trajectories and score > self.config.update_score:
                 track = self.active_trajectories[label]
-                track.state_update(bb=box, updated_state=self.learnableKF.KNet_model.m1x_posterior[label], h_sigma=self.learnableKF.KNet_model.h_Sigma.squeeze(0)[label], features=features, score=score, timestamp=self.current_timestamp)
+                track.state_update(bb=box, updated_state=self.learnableKF.LKF_model.m1x_posterior[label], h_sigma=self.learnableKF.LKF_model.h_Sigma.squeeze(0)[label], features=features, score=score, timestamp=self.current_timestamp)
                 valid_bbs.append(box)
                 valid_ids.append(label)
             elif score > self.config.init_score:
@@ -231,13 +231,13 @@ class HYBRIDTRACK:
                 self.active_trajectories[label] = new_tra
                 valid_bbs.append(box)
                 valid_ids.append(label)
-                self.learnableKF.KNet_model.m1x_posterior_previous_previous[label] = (box - 3e-8).unsqueeze(-1)
-                self.learnableKF.KNet_model.m1x_posterior_previous[label] = (box - 2e-9).unsqueeze(-1)
-                self.learnableKF.KNet_model.m1x_posterior[label] = box.unsqueeze(-1)
-                self.learnableKF.KNet_model.m1x_prior_previous[label] = (box - 1e-8).unsqueeze(-1)
-                self.learnableKF.KNet_model.m1x_prior[label] = box.unsqueeze(-1)
-                self.learnableKF.KNet_model.m1y[label] = box.unsqueeze(-1)
-                self.learnableKF.KNet_model.y_previous[label] = self.learnableKF.KNet_model.m1x_prior_previous[label]
+                self.learnableKF.LKF_model.m1x_posterior_previous_previous[label] = (box - 3e-8).unsqueeze(-1)
+                self.learnableKF.LKF_model.m1x_posterior_previous[label] = (box - 2e-9).unsqueeze(-1)
+                self.learnableKF.LKF_model.m1x_posterior[label] = box.unsqueeze(-1)
+                self.learnableKF.LKF_model.m1x_prior_previous[label] = (box - 1e-8).unsqueeze(-1)
+                self.learnableKF.LKF_model.m1x_prior[label] = box.unsqueeze(-1)
+                self.learnableKF.LKF_model.m1y[label] = box.unsqueeze(-1)
+                self.learnableKF.LKF_model.y_previous[label] = self.learnableKF.LKF_model.m1x_prior_previous[label]
         if not valid_bbs:
             return torch.zeros(0, self.current_bbs.shape[1]), torch.zeros(0, dtype=torch.int64)
         return torch.stack(valid_bbs), torch.tensor(valid_ids, dtype=torch.int64)

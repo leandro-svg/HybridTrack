@@ -74,8 +74,8 @@ class LKF(nn.Module):
         self.prior_Sigma = prior_Sigma.to(self.device)
         self.prior_S = prior_S.to(self.device)
         m, n = self.m, self.n
-        in_mult = cfg.TRAINER.IN_MULT_KNET
-        out_mult = cfg.TRAINER.OUT_MULT_KNET
+        in_mult = cfg.TRAINER.IN_MULT_LKF
+        out_mult = cfg.TRAINER.OUT_MULT_LKF
         # GRU/FC layers for Q
         self.d_input_Q = m * in_mult
         self.d_hidden_Q = m ** 2
@@ -266,7 +266,7 @@ class LKF(nn.Module):
         self.KGain = KG.view(self.batch_size, self.m, self.n)
         self.Pcov = Pcov
 
-    def KNet_step(self, y: torch.Tensor, sequence: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def LKF_step(self, y: torch.Tensor, sequence: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         self.step_prior(sequence)
         self.step_KGain_est(y)
         self.m1x_prior_previous = self.m1x_prior
@@ -309,9 +309,9 @@ class LKF(nn.Module):
 
     def forward(self, y: torch.Tensor, sequence: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         y = y.to(self.device)
-        return self.KNet_step(y, sequence)
+        return self.LKF_step(y, sequence)
 
-    def init_hidden_KNet(self) -> None:
+    def init_hidden_LKF(self) -> None:
         """Initialize hidden states for all GRUs."""
         m, n = self.m, self.n
         self.h_S = self.prior_S.flatten().reshape(1, 1, -1).repeat(self.seq_len_input, self.batch_size, 1)
@@ -329,15 +329,15 @@ class LEARNABLEKF(nn.Module):
     def __init__(self, SysModel, cfg):
         super().__init__()
         self.device = torch.device('cuda' if cfg.TRAINER.USE_CUDA else 'cpu')
-        self.KNet_model = LKF()
-        self.KNet_model.NNBuild(SysModel, cfg)
+        self.LKF_model = LKF()
+        self.LKF_model.NNBuild(SysModel, cfg)
 
-    def init_hidden_KNet(self) -> None:
-        self.KNet_model.init_hidden_KNet()
+    def init_hidden_LKF(self) -> None:
+        self.LKF_model.init_hidden_LKF()
 
     def forward(self, data: torch.Tensor, sequence: Optional[torch.Tensor] = None):
-        prediction, state_prior = self.KNet_model(data, sequence)
-        return prediction, state_prior, self.KNet_model.Pcov
+        prediction, state_prior = self.LKF_model(data, sequence)
+        return prediction, state_prior, self.LKF_model.Pcov
 
 
 

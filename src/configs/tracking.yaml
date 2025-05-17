@@ -31,6 +31,6 @@ post_score_offline: 1.4
 
 latency: 1
 
-in_mult_KNet: 16
-out_mult_KNet: 32
+in_mult_LKF: 16
+out_mult_LKF: 32
 n_batch: 1

@@ -107,11 +107,11 @@ else:
 sys_model_partial = SystemModel(f, Q, h, R, cfg.DATASET.SEQ_LEN, cfg.TRAINER.T_TEST, m, n)
 sys_model_partial.InitSequence(m1x_0, m2x_0)
 
-KNet_model = LEARNABLEKF(sys_model, cfg)
-KNet_Pipeline = TrainingPipeline(strTime, "LKF", "LKF")
-KNet_Pipeline.set_ss_model(sys_model_partial)
-KNet_Pipeline.set_model(KNet_model)
-KNet_Pipeline.set_training_params(cfg)
+LKF_model = LEARNABLEKF(sys_model, cfg)
+LKF_Pipeline = TrainingPipeline(strTime, "LKF", "LKF")
+LKF_Pipeline.set_ss_model(sys_model_partial)
+LKF_Pipeline.set_model(LKF_model)
+LKF_Pipeline.set_training_params(cfg)
 type_network = 'hybridtrack'
 type_tracking = 'online'
 
@@ -135,7 +135,7 @@ if train_bool:
         yaml.dump(cfg, file)
     logging.info(f"Configuration saved to {os.path.join(path_results_config, 'config.yaml')}")
 
-    [MSE_cv_linear_epoch, MSE_cv_dB_epoch, MSE_train_linear_epoch, MSE_train_dB_epoch] = KNet_Pipeline.NNTrain(sys_model_partial,
+    [MSE_cv_linear_epoch, MSE_cv_dB_epoch, MSE_train_linear_epoch, MSE_train_dB_epoch] = LKF_Pipeline.NNTrain(sys_model_partial,
                                                                                                             cv_input,
                                                                                                             cv_target,
                                                                                                             train_input,
@@ -150,7 +150,7 @@ else:
         os.makedirs(path_results_weight)
         logging.info(f"Created weights directory (or it already existed): {path_results_weight}")
 
-    [MSE_test_linear_arr, MSE_test_linear_avg, MSE_test_dB_avg, Knet_out] = KNet_Pipeline.NNTest(sys_model_partial,
+    [MSE_test_linear_arr, MSE_test_linear_avg, MSE_test_dB_avg, LKF_out] = LKF_Pipeline.NNTest(sys_model_partial,
                                                                                                 test_input,
                                                                                                 test_target,
                                                                                                 path_results_val,

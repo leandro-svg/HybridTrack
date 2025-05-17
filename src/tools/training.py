@@ -88,10 +88,10 @@ class TrainingPipeline:
         for ti in range(self.N_steps):
             self.optimizer.zero_grad()
             self.model.train()
-            self.model.KNet_model.batch_size = self.N_B
+            self.model.LKF_model.batch_size = self.N_B
             for param in self.model.parameters():
                 assert not torch.isnan(param).any(), "Model parameter has NaN values."
-            self.model.KNet_model.init_hidden_KNet()
+            self.model.LKF_model.init_hidden_LKF()
             y_training_batch = torch.empty((self.N_B, self.state_size, self.ss_model.T))
             train_target_batch = torch.empty((self.N_B, self.state_size, self.ss_model.T))
             x_out_training_batch = torch.empty((self.N_B, self.state_size, self.ss_model.T))
@@ -106,7 +106,7 @@ class TrainingPipeline:
                         initializer[ii, :, 0] = elem
                 for idx, elem in enumerate(train_target[index][0]):
                     train_target_batch[ii, :, idx] = elem
-            self.model.KNet_model.InitSequence(initializer, self.ss_model.T)
+            self.model.LKF_model.InitSequence(initializer, self.ss_model.T)
             for t in range(self.ss_model.T):
                 if cfg.TRAINER.get('ONLINE_TRACKING', False):
                     model_output, state_prior, _ = self.model(y_training_batch[:, :, t])
@@ -130,8 +130,8 @@ class TrainingPipeline:
             # Validation
             self.model.eval()
             self.model.batch_size = self.N_CV
-            self.model.KNet_model.batch_size = self.N_CV
-            self.model.init_hidden_KNet()
+            self.model.LKF_model.batch_size = self.N_CV
+            self.model.init_hidden_LKF()
             with torch.no_grad():
                 self.ss_model.T = self.T_test
                 y_cv_batch = torch.empty((self.N_CV, self.state_size, self.ss_model.T))
@@ -147,7 +147,7 @@ class TrainingPipeline:
                             initializer_cv[index, :, 0] = elem
                     for idx, elem in enumerate(cv_target[index][0]):
                         cv_target_batch[index, :, idx] = elem
-                self.model.KNet_model.InitSequence(initializer_cv, self.ss_model.T)
+                self.model.LKF_model.InitSequence(initializer_cv, self.ss_model.T)
                 for t in range(self.ss_model.T):
                     if cfg.TRAINER.get('ONLINE_TRACKING', False):
                         model_output, state_prior, _ = self.model(y_cv_batch[:, :, t])
@@ -163,7 +163,7 @@ class TrainingPipeline:
                     self.MSE_cv_dB_opt = self.MSE_cv_dB_epoch[ti]
                     self.MSE_cv_idx_opt = ti
                     self.model.batch_size = 5000
-                    self.model.KNet_model.batch_size = 5000
+                    self.model.LKF_model.batch_size = 5000
                     root_path = self.cfg.DATASET.ROOT
                     last_model_path = self.cfg.MODEL.SAVE_PATH
                     save_dir = os.path.join(root_path, last_model_path)
@@ -210,8 +210,8 @@ class TrainingPipeline:
         self.state_size = 7
         self.model.eval()
         self.model.batch_size = self.N_CV
-        self.model.KNet_model.batch_size = self.N_CV
-        self.model.init_hidden_KNet()
+        self.model.LKF_model.batch_size = self.N_CV
+        self.model.init_hidden_LKF()
         with torch.no_grad():
             self.ss_model.T = self.T_test
             y_cv_batch = torch.empty((self.N_CV, self.state_size, self.ss_model.T))
@@ -227,7 +227,7 @@ class TrainingPipeline:
                         initializer_cv[index, :, 0] = elem
                 for idx, elem in enumerate(cv_target[index][0]):
                     cv_target_batch[index, :, idx] = elem
-            self.model.KNet_model.InitSequence(initializer_cv, self.ss_model.T)
+            self.model.LKF_model.InitSequence(initializer_cv, self.ss_model.T)
             for t in range(self.ss_model.T):
                 if cfg.TRAINER.get('ONLINE_TRACKING', False):
                     model_output, state_prior, _ = self.model(y_cv_batch[:, :, t])
