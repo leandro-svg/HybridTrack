@@ -15,8 +15,8 @@ HybridTrack is a novel 3D multi-object tracking (MOT) framework that combines th
 
 > 📌 *A schematic of the HybridTrack architecture will be added here.*
 
-![Method Architecture](model_architecture_11.jpg)
-![Tracking Results](hybridtrack_demo.gif)
+![Method Architecture](assets/model_architecture_11.jpg)
+![Tracking Results](assets/hybridtrack_demo.gif)
 ### 📦 Features
 - 3D Object Tracking using LiDAR
 - Learnable Kalman Filter (LKF)
