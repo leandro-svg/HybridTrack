@@ -28,9 +28,8 @@ HybridTrack is a novel 3D multi-object tracking (MOT) framework that combines th
 | Method               | HOTA     | FPS   | Modality   | Model Weights                                                                 |
 |----------------------|----------|-------|------------|-------------------------------------------------------------------------------|
 | HybridTrack (Ours)   | **82.08%** | **112** | 3D (LiDAR) | [Download (.pth)](https://drive.google.com/file/d/1beFjycNjTtb2nDDf0vteHp1NNbR4lrvR/view?usp=sharing) |
-| PMTrack              | 81.36%   | -     | 3D         | -                                                                             |
-| PC-TCNN              | 80.90%   | -     | 3D         | -                                                                             |
-| UG3DMOT              | 78.60%   | -     | 3D         | -                                                                             |
+-                                                                             |
+
 See the paper for detailed comparison across metrics like MOTA, IDF1, and association accuracy.
 
 ### 📁 Dataset
@@ -50,8 +49,6 @@ HybridTrack is evaluated on the [KITTI Tracking Benchmark](https://www.cvlibs.ne
    - For tracking, see [Tracking Guide](docs/tracking.md)
 
 ---
-
-
 
 ## 🧩 Acknowledgements
 
