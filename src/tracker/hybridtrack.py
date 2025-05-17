@@ -243,12 +243,6 @@ class HYBRIDTRACK:
         return torch.stack(valid_bbs), torch.tensor(valid_ids, dtype=torch.int64)
 
     def post_processing(self, config):
-        """
-        Enhanced post-processing with trajectory splitting and merging, false positive filtering, and track memory pool handling.
-        Args:
-            config: configuration object
-        Returns:
-            dict of filtered Trajectories
-        """
+       
         tra = {**self.dead_trajectories, **self.active_trajectories}
         return tra
