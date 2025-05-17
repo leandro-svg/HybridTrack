@@ -24,19 +24,18 @@ This document explains how to configure and launch the tracking process for Hybr
   ```
 - Make sure any other path fields are also correct for your environment.
 
-## 3. Launch Tracking
+## 3. Download and Place Model Weights
+
+- Train your own model or Download the HybridTrack PyTorch model weights from [this link](https://drive.google.com/file/d/1beFjycNjTtb2nDDf0vteHp1NNbR4lrvR/view?usp=sharing).
+- Place the downloaded `.pth` file in:
+  ```
+  src/result/hybridtrack/online/model_checkpoint
+  ```
+## 4. Launch Tracking
 
 - From the project root, run:
   ```bash
   python src/run_tracking.py --cfg_file src/configs/tracking.yaml
-  ```
-
-## 4. Download and Place Model Weights
-
-- Download the HybridTrack PyTorch model weights from [this link](https://drive.google.com/file/d/1beFjycNjTtb2nDDf0vteHp1NNbR4lrvR/view?usp=sharing).
-- Place the downloaded `.pth` file in:
-  ```
-  src/result/hybridtrack/online/model_checkpoint
   ```
 
 ---

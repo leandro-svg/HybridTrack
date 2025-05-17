@@ -2,17 +2,21 @@
 
 [📄 Read the paper on arXiv](https://www.arxiv.org/abs/2501.01275)
 
-## 🏆 News
-
-- HybridTrack has been **accepted to RAL 2025**!
 
 ---
 HybridTrack is a novel 3D multi-object tracking (MOT) framework that combines the strengths of traditional Kalman filtering with the adaptability of deep learning. Designed for traffic and autonomous driving scenarios, it delivers **state-of-the-art accuracy** and **real-time performance**—no manual tuning or scenario-specific designs required.
 
 ---
+## 🏆 News
 
-## 🚀 Highlights
+- HybridTrack has been **accepted to RAL 2025**!
+---
+## 🏗️ Method Architecture
 
+> 📌 *A schematic of the HybridTrack architecture will be added here.*
+
+![Method Architecture](model_architecture_11.jpg)
+![Tracking Results](hybridtrack_demo.gif)
 ### 📦 Features
 - 3D Object Tracking using LiDAR
 - Learnable Kalman Filter (LKF)
@@ -27,7 +31,6 @@ HybridTrack is a novel 3D multi-object tracking (MOT) framework that combines th
 | PMTrack              | 81.36%   | -     | 3D         | -                                                                             |
 | PC-TCNN              | 80.90%   | -     | 3D         | -                                                                             |
 | UG3DMOT              | 78.60%   | -     | 3D         | -                                                                             |
-
 See the paper for detailed comparison across metrics like MOTA, IDF1, and association accuracy.
 
 ### 📁 Dataset
@@ -45,31 +48,6 @@ HybridTrack is evaluated on the [KITTI Tracking Benchmark](https://www.cvlibs.ne
 3. **Configure and run:**
    - For training, see [Training Guide](docs/training.md)
    - For tracking, see [Tracking Guide](docs/tracking.md)
-
----
-
-## 📚 Documentation
-- [Data Preparation Guide](docs/create_data.md)
-- [Training Guide](docs/training.md)
-- [Tracking Guide](docs/tracking.md)
-
----
-
-## 🖼️ Example Results
-![Tracking Results](hybridtrack_demo.gif)
-
----
-## 🏗️ Method Architecture
-
-> 📌 *A schematic of the HybridTrack architecture will be added here.*
-
-![Method Architecture](model_architecture_11.jpg)
-
----
-
-## 📝 Project Status
-
-🚧 **Code will be released upon acceptance. Stay tuned!**
 
 ---
 
