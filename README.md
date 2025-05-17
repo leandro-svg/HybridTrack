@@ -65,13 +65,11 @@ We thank the authors for their valuable contributions to the community.
 If you use HybridTrack in your research, please consider citing:
 
 ```bibtex
-@misc{dibella2025hybridtrackhybridapproachrobust,
-      title={HybridTrack: A Hybrid Approach for Robust Multi-Object Tracking}, 
-      author={Leandro Di Bella and Yangxintong Lyu and Bruno Cornelis and Adrian Munteanu},
-      year={2025},
-      eprint={2501.01275},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2501.01275}, 
+@article{di2025hybridtrack,
+  title={HybridTrack: A Hybrid Approach for Robust Multi-Object Tracking},
+  author={Di Bella, Leandro and Lyu, Yangxintong and Cornelis, Bruno and Munteanu, Adrian},
+  journal={arXiv preprint arXiv:2501.01275},
+  year={2025}
 }
+
 ```
