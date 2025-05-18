@@ -41,8 +41,8 @@ src/data/
         pose/
         velodyne/
         oxts/
-      detections/
-        detector/
+      detections/ (See step 4)
+        virconv/
           training/
             0000/
             0001/
@@ -59,7 +59,7 @@ src/data/
 
 ## 3. Download Detections
 
-- Download the detections from [this Google Drive folder](https://drive.google.com/drive/folders/1SrVjCsL1sT0x5h2m50UM_XXifpBD9HMD?usp=sharing) and place the `detections` folder inside `src/data/`.
+- Download the detections from [this Google Drive folder](https://drive.google.com/drive/folders/1SrVjCsL1sT0x5h2m50UM_XXifpBD9HMD?usp=sharing) and place the `virconv` folder inside `src/data/KITTI/tracking/detections`.
 
 ## 4. Generate Annotations
 
