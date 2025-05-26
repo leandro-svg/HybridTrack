@@ -1,0 +1,36 @@
+# dataset info
+
+dataset_path: "src/data/KITTI/tracking/testing"
+detections_path: src/data/KITTI/tracking/detections/virconv/testing
+save_path: 'src/evaluator/evaluation/results/sha_key/data'
+model_checkpoint: 'src/result/hybridtrack/online/model_checkpoint/hybridtrack.pt'
+# val [1,6,8,10,12,13,14,15,16,18,19]
+# trainval [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+# test [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+tracking_seqs:  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+
+tracking_type: "Car"
+device: 'cuda'
+use_cuda: True
+state_func_covariance: 100
+measure_func_covariance: 0.001
+prediction_score_decay: 0.025
+LiDAR_scanning_frequency: 10
+
+max_prediction_num: 25
+max_prediction_num_for_new_object: 11
+max_security_window: 10
+
+threshold_3d: 1.25 
+post_process_interpolation: True
+input_score: -0.55
+init_score: -0.55
+update_score: -0.55
+post_score_online: 0.4
+post_score_offline: 1.4
+
+latency: 1
+
+in_mult_LKF: 16
+out_mult_LKF: 32
+n_batch: 1
