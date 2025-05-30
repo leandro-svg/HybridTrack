@@ -6,6 +6,7 @@ This document explains how to set up the KITTI tracking dataset and generate the
 
 - Download the KITTI tracking dataset from the [official KITTI website](http://www.cvlibs.net/datasets/kitti/eval_tracking.php).
 - Download both the `training` and `testing` sets.
+- Download and unzip the pose data from the following link: [Google drive for pose data](https://drive.google.com/file/d/1o-ay2FhlOEnKFmqXMWnbH7e6gId8L7P9/view?usp=sharing).                                           
 - Unzip the dataset so you have the following structure:
   ```
   KITTI/
