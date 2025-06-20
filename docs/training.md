@@ -23,7 +23,7 @@ This document explains how to configure and launch the training process for Hybr
 
 - From the project root, run:
   ```bash
-  python src/training_module.py --config src/configs/training.yaml
+  python src/training_script.py --config src/configs/training.yaml
   ```
 
 ---

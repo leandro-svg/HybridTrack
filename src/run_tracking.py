@@ -1,7 +1,7 @@
 import argparse
 import sys
 import os
-from tracking_module import tracking_val_seq
+from tracking_main import tracking_val_seq
 
 
 parser = argparse.ArgumentParser(description='arg parser')
