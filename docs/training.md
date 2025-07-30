@@ -22,8 +22,8 @@ This document explains how to configure and launch the training process for Hybr
 ## 3. Launch Training
 
 - From the project root, run:
-  ```
-bash python src/training_script.py --cfg src/configs/training.yaml
+  ```bash
+  python src/training_script.py --cfg src/configs/training.yaml
   ```
 
 ---
