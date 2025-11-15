@@ -8,3 +8,6 @@ pyyaml
 yacs
 opencv-python
 Cython
+easydict
+fvcore
+navpy

@@ -6,7 +6,7 @@ MODEL:
 
 DATASET:
   NAME: "KITTIDataset"
-  ROOT: "/home/leandro/Documents/HybridTrack/HybridTrack"
+  ROOT: "/FARM/ldibella/HybridTrack"
   MODE: "train"
   RESIZE: 256
   N_PCD: 1000

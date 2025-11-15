@@ -2,7 +2,9 @@ import json
 import os
 
 from tracker.obectPath import LEARNABLEKF
-os.environ['CUDA_VISIBLE_DEVICES']='1'
+# Use SLURM allocated GPUs if available, otherwise default to GPU 1
+if 'SLURM_JOB_GPUS' not in os.environ and 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES']='1'
 import torch
 torch.pi = torch.acos(torch.zeros(1)).item() * 2 # which is 3.1415927410125732
 import torch.nn as nn
@@ -42,16 +44,27 @@ logging.info(f"Current Time = {strTime}")
 train_bool = True  # Set as needed
 load_data = True
 
-if cfg.TRAINER.USE_CUDA:
+# Check for force CPU mode via environment variable
+force_cpu = os.environ.get('FORCE_CPU', 'false').lower() in ['true', '1', 'yes']
+
+if cfg.TRAINER.USE_CUDA and not force_cpu:
    if torch.cuda.is_available():
       device = torch.device('cuda')
-      logging.info("Using GPU")
+      logging.info(f"Using GPU - CUDA device count: {torch.cuda.device_count()}")
+      logging.info(f"Current CUDA device: {torch.cuda.current_device()}")
+      logging.info(f"CUDA device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
    else:
-      logging.error("No GPU found, but USE_CUDA is True. Exiting.")
-      raise Exception("No GPU found, please set USE_CUDA = False or ensure GPU is available.")
+      logging.error("No GPU found, but USE_CUDA is True.")
+      logging.error(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
+      logging.error(f"SLURM_JOB_GPUS: {os.environ.get('SLURM_JOB_GPUS', 'Not set')}")
+      logging.warning("Falling back to CPU mode. Set FORCE_CPU=true to suppress this warning.")
+      device = torch.device('cpu')
 else:
     device = torch.device('cpu')
-    logging.info("Using CPU")
+    if force_cpu:
+        logging.info("Using CPU (forced via FORCE_CPU environment variable)")
+    else:
+        logging.info("Using CPU")
 
 DatafolderName = os.path.join(cfg.DATASET.ROOT, 'src', 'data', 'checkpoints')
 

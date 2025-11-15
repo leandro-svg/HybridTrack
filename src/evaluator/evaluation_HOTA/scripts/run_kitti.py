@@ -54,7 +54,8 @@ def eval_kitti():
             parser.add_argument("--" + setting, nargs='+')
         else:
             parser.add_argument("--" + setting)
-    args = parser.parse_args().__dict__
+    # Parse with empty list to use defaults when called from tracking_main
+    args = parser.parse_args([]).__dict__
     for setting in args.keys():
         if args[setting] is not None:
             if type(config[setting]) == type(True):
