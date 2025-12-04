@@ -10,6 +10,7 @@ This module defines the SystemModel class, which is responsible for:
 """
 from tqdm import tqdm
 import torch
+import numpy as np
 from torch.distributions.multivariate_normal import MultivariateNormal
 from typing import Callable, Optional, List, Tuple
 
@@ -150,6 +151,8 @@ class SystemModel:
 
         self.Input = []
         self.Target = []
+        self.Context = []  # Optional: per-sequence detection context (list of per-frame detection tensors)
+        self.HistoryContext = []  # Optional: per-sequence history context (dict per sequence with history_per_frame)
         # self.filenames = [] # Removed as it was unused
 
         # The loop iterates through the dataloader.
@@ -161,10 +164,10 @@ class SystemModel:
         for idx, data_loaded in enumerate(tqdm(dataloader, desc="Generating Batch")):
             # if idx >= batch_size: # Uncomment this to strictly limit processing to batch_size
             #     break
-            # Data format from dataloader: data[0] is target, data[1] is input
-            # This is based on the original assignment:
-            # pose_input = data[1]
-            # pose_target = data[0]
+            # Data format from dataloader: 
+            #   data[0] is target (GT sequence)
+            #   data[1] is input (detection sequence)
+            #   data[2] is context_dict with 'history_context' and 'detection_context'
             if not (isinstance(data_loaded, (list, tuple)) and len(data_loaded) >= 2):
                 raise ValueError(f"DataLoader expected to yield tuples/lists of at least 2 elements. Got: {type(data_loaded)}")
 
@@ -175,6 +178,46 @@ class SystemModel:
 
             self.Input.append(pose_input)
             self.Target.append(pose_target)
+            
+            # Extract context from context_dict (3rd element)
+            context_dict = data_loaded[2] if len(data_loaded) >= 3 and data_loaded[2] is not None else {}
+            
+            # Extract history context
+            history_ctx = context_dict.get('history_context', {}) if isinstance(context_dict, dict) else {}
+            self.HistoryContext.append(history_ctx if history_ctx else {})
+            
+            # Extract detection context and convert to per-frame tensor list
+            detection_ctx = context_dict.get('detection_context', {}) if isinstance(context_dict, dict) else {}
+            if detection_ctx and 'detections_per_frame' in detection_ctx:
+                det_per_frame = detection_ctx['detections_per_frame']
+                # Convert each frame's numpy array or tensor to proper format
+                frame_tensors = []
+                for frame_dets in det_per_frame:
+                    if isinstance(frame_dets, torch.Tensor):
+                        # DataLoader may add batch dim: (1, N, 8) -> squeeze to (N, 8)
+                        if frame_dets.dim() == 3 and frame_dets.shape[0] == 1:
+                            frame_dets = frame_dets.squeeze(0)
+                        if frame_dets.numel() > 0:
+                            frame_tensors.append(frame_dets.float())
+                        else:
+                            frame_tensors.append(torch.zeros((0, 8), dtype=torch.float32))
+                    elif isinstance(frame_dets, np.ndarray) and frame_dets.size > 0:
+                        frame_tensors.append(torch.from_numpy(frame_dets).float())
+                    elif isinstance(frame_dets, list) and len(frame_dets) > 0:
+                        frame_tensors.append(torch.tensor(frame_dets, dtype=torch.float32))
+                    else:
+                        frame_tensors.append(torch.zeros((0, 8), dtype=torch.float32))
+                self.Context.append(frame_tensors)
+            else:
+                # Placeholder empty context per frame if sequence length known
+                if pose_target.dim() == 2:
+                    T = pose_target.shape[0]  # (T, state_dim)
+                    self.Context.append([torch.zeros((0, 8), dtype=torch.float32) for _ in range(T)])
+                elif pose_target.dim() == 3:
+                    T = pose_target.shape[-1]  # (batch, state_dim, T)
+                    self.Context.append([torch.zeros((0, 8), dtype=torch.float32) for _ in range(T)])
+                else:
+                    self.Context.append([])
 
 
 

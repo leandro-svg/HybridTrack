@@ -76,13 +76,41 @@ class HYBRIDTRACK:
         sys_model = SystemModel(f, Q, hRotate, P, 1, 1, m, n)
         sys_model.InitSequence(m1x_0, m2x_0)
         self.learnableKF = LEARNABLEKF(sys_model, this_config)
-        self.learnableKF = torch.load(self.config.model_checkpoint, map_location=self.device)
+
+        # Safe checkpoint loading: handle state_dict vs full model
+        ckpt = torch.load(self.config.model_checkpoint, map_location=self.device)
+        if isinstance(ckpt, dict) and 'state_dict' in ckpt:
+            missing, unexpected = self.learnableKF.load_state_dict(ckpt['state_dict'], strict=False)
+            if missing:
+                print(f"[HybridTrack] Warning: Missing keys in checkpoint: {missing[:10]}{'...' if len(missing) > 10 else ''}")
+            if unexpected:
+                print(f"[HybridTrack] Warning: Unexpected keys in checkpoint: {unexpected[:10]}{'...' if len(unexpected) > 10 else ''}")
+        elif isinstance(ckpt, dict) and all(k.startswith('LKF_model') or k.startswith('module') for k in ckpt.keys()):
+            missing, unexpected = self.learnableKF.load_state_dict(ckpt, strict=False)
+            if missing:
+                print(f"[HybridTrack] Warning: Missing keys in checkpoint: {missing[:10]}{'...' if len(missing) > 10 else ''}")
+            if unexpected:
+                print(f"[HybridTrack] Warning: Unexpected keys in checkpoint: {unexpected[:10]}{'...' if len(unexpected) > 10 else ''}")
+        else:
+            # Assume full model was saved
+            self.learnableKF = ckpt.to(self.device)
+
+        # Log context configuration status
+        ctx_cfg = getattr(self.config, 'CONTEXT', None)
+        if ctx_cfg is not None:
+            print(f"[HybridTrack] Context config: USE_CONTEXT={getattr(ctx_cfg, 'USE_CONTEXT', False)}, USE_HISTORY={getattr(ctx_cfg, 'USE_HISTORY', False)}")
+        else:
+            print("[HybridTrack] No CONTEXT config found - context disabled")
+
         self.learnableKF = self.learnableKF.to(self.device)
         self.learnableKF.LKF_model.init_hidden_LKF()
         ones_init = torch.ones((self.batch_size, self.track_dim, 1), device=self.device)
         self.learnableKF.LKF_model.InitSequence(ones_init, 0)
         self.learnableKF.LKF_model.m1y = ones_init.clone()
         self.learnableKF.LKF_model.m1x_prior = ones_init.clone()
+        # Ensure internal batch size matches trajectory pool
+        if hasattr(self.learnableKF, 'LKF_model'):
+            self.learnableKF.LKF_model.update_batch_size(self.batch_size)
 
     def _pipeline(self) -> Tuple[torch.Tensor, torch.Tensor]:
         self._trajectories_prediction_step()
@@ -138,7 +166,38 @@ class HYBRIDTRACK:
 
     def _lkf_prediction(self):
         with torch.no_grad():
-            self.learnableKF.LKF_model.step_prior()
+            # Check if context is enabled
+            ctx_cfg = getattr(self.config, 'CONTEXT', None)
+            use_context = ctx_cfg is not None and getattr(ctx_cfg, 'USE_CONTEXT', False)
+            
+            # Build detection and history contexts + masks
+            det_ctx, det_mask = self._prepare_detection_context()
+            history_len = int(getattr(ctx_cfg, 'HISTORY_LEN', 5)) if ctx_cfg else 5
+            hist_ctx, hist_mask = self._prepare_history_context(history_len=history_len)
+            
+            # EXTENSIVE DEBUG: Log what's being passed to LKF
+            if not hasattr(self, '_lkf_debug_counter'):
+                self._lkf_debug_counter = 0
+            self._lkf_debug_counter += 1
+            if self._lkf_debug_counter <= 10:
+                print(f"\n[LKF PREDICTION INPUT] Frame {self.current_timestamp}, Call {self._lkf_debug_counter}")
+                print(f"  use_context={use_context}")
+                if det_ctx is not None:
+                    print(f"  det_ctx: shape={det_ctx.shape}, mean={det_ctx.mean().item():.4f}, std={det_ctx.std().item():.4f}")
+                    print(f"  det_mask: shape={det_mask.shape}, num_valid={(~det_mask).sum().item()}")
+                else:
+                    print(f"  det_ctx: None")
+                if hist_ctx is not None:
+                    print(f"  hist_ctx: shape={hist_ctx.shape}")
+                else:
+                    print(f"  hist_ctx: None")
+            
+            self.learnableKF.LKF_model.step_prior(
+                det_context=det_ctx,
+                det_mask=det_mask,
+                hist_context=hist_ctx,
+                hist_mask=hist_mask
+            )
 
     def _compute_cost_map(self):
         all_ids, all_predictions, all_detections = [], [], []
@@ -244,3 +303,318 @@ class HYBRIDTRACK:
     def post_processing(self, config):
         tra = {**self.dead_trajectories, **self.active_trajectories}
         return tra
+
+    def _prepare_detection_context(self):
+        """
+        Prepare detection context tensor (B, N, 8) and mask (B, N) for current frame.
+        
+        NEW DESIGN: For each ego track slot in batch B, provide context about OTHER
+        active tracks (not the ego itself). This gives meaningful interaction information.
+        
+        Context format: [dx, dy, dz, l, w, h, dry, score] where dx/dy/dz are RELATIVE
+        to the ego track's current predicted position.
+        
+        Returns:
+            context: (B, N, 8) tensor where B is track pool size
+            mask: (B, N) boolean mask, True for padded positions
+        """
+        # DEBUG: Track why context is None
+        if not hasattr(self, '_ctx_prep_debug_counter'):
+            self._ctx_prep_debug_counter = 0
+        self._ctx_prep_debug_counter += 1
+        
+        # Check if context is enabled
+        ctx_cfg = getattr(self.config, 'CONTEXT', None)
+        if ctx_cfg is None or not getattr(ctx_cfg, 'USE_CONTEXT', False):
+            if self._ctx_prep_debug_counter <= 3:
+                print(f"[CTX PREP DEBUG] Frame {self.current_timestamp}: Context DISABLED in config")
+            return None, None
+            
+        if not self.active_trajectories:
+            if self._ctx_prep_debug_counter <= 3:
+                print(f"[CTX PREP DEBUG] Frame {self.current_timestamp}: NO active trajectories")
+            return None, None
+
+        import numpy as np
+        
+        lkf_model = self.learnableKF.LKF_model
+        B = lkf_model.batch_size
+        max_n = int(getattr(ctx_cfg, 'MAX_CONTEXT_OBJECTS', 16))
+        # Reduced from 50m to 30m - distant objects are noise, not useful context
+        dist_thresh = float(getattr(ctx_cfg, 'DISTANCE_THRESH', 30.0))
+        
+        # Get all active track IDs and their current predicted positions
+        active_track_ids = list(self.active_trajectories.keys())
+        
+        if len(active_track_ids) < 2:
+            # Need at least 2 tracks for meaningful context
+            if self._ctx_prep_debug_counter <= 10:
+                print(f"[CTX PREP DEBUG] Frame {self.current_timestamp}: Only {len(active_track_ids)} track(s), need >=2")
+            return None, None
+        
+        # Build position dict: track_id -> current state (7,)
+        # Use updated_state from PREVIOUS frame (not current!) since current frame's 
+        # updated_state doesn't exist yet during prediction phase
+        track_positions = {}
+        for tid in active_track_ids:
+            traj = self.active_trajectories[tid]
+            # Get most recent timestamp before current frame that has updated_state
+            timestamps = sorted([ts for ts in traj.trajectory.keys() if ts < self.current_timestamp])
+            if len(timestamps) > 0:
+                most_recent_ts = timestamps[-1]
+                obj = traj.trajectory[most_recent_ts]
+                if obj.updated_state is not None:
+                    track_positions[tid] = obj.updated_state[:7].clone()
+        
+        if len(track_positions) < 2:
+            if self._ctx_prep_debug_counter <= 10:
+                print(f"[CTX PREP DEBUG] Frame {self.current_timestamp}: Only {len(track_positions)} valid position(s), need >=2")
+            return None, None
+        
+        # Build context for each track slot
+        # context[i] = relative positions of OTHER tracks to track i
+        context_list = []
+        mask_list = []
+        
+        for slot_idx in range(B):
+            # Find which track (if any) is in this slot
+            ego_tid = None
+            ego_pos = None
+            for tid, pos in track_positions.items():
+                if tid == slot_idx:  # Track ID matches slot index
+                    ego_tid = tid
+                    ego_pos = pos
+                    break
+            
+            if ego_tid is None or ego_pos is None:
+                # No active track in this slot - provide zero context
+                ctx = torch.zeros((max_n, 8), dtype=torch.float32, device=self.device)
+                msk = torch.ones(max_n, dtype=torch.bool, device=self.device)
+            else:
+                # Build relative context: other tracks' positions relative to ego
+                other_contexts = []
+                for other_tid, other_pos in track_positions.items():
+                    if other_tid == ego_tid:
+                        continue  # Skip ego itself
+                    
+                    # Compute relative position
+                    dx = other_pos[0] - ego_pos[0]  # relative x
+                    dy = other_pos[1] - ego_pos[1]  # relative y
+                    dz = other_pos[2] - ego_pos[2]  # relative z
+                    
+                    dist = torch.sqrt(dx**2 + dy**2)
+                    if dist > dist_thresh:
+                        continue  # Too far
+                    
+                    # Relative yaw
+                    dry = other_pos[6] - ego_pos[6]
+                    # Normalize to [-pi, pi]
+                    dry = torch.atan2(torch.sin(dry), torch.cos(dry))
+                    
+                    # Get score (use average detection score, normalized to [0,1])
+                    other_traj = self.active_trajectories.get(other_tid)
+                    if other_traj and other_traj.total_detections > 0:
+                        # Clip raw score to reasonable range and normalize
+                        raw_score = other_traj.total_detected_score / other_traj.total_detections
+                        score = min(max(raw_score, 0.0), 1.0)  # Clip to [0,1]
+                    else:
+                        score = 0.5
+                    
+                    # TEMPORARY: Disable velocity computation to match training (8-dim padded to 11-dim with zeros)
+                    # TODO: Add velocity computation to training dataset, then re-enable this
+                    dvx, dvy, dvz = 0.0, 0.0, 0.0  # Always zero to match training
+                    
+                    # VELOCITY COMPUTATION DISABLED - keeping code structure but not executing
+                    if False:  # len(other_prev_ts) >= 2 and ego_traj:
+                        # Check if updated_state exists for both timestamps
+                        other_obj_curr = other_traj.trajectory[other_prev_ts[-1]]
+                        other_obj_prev = other_traj.trajectory[other_prev_ts[-2]]
+                        
+                        if (other_obj_curr.updated_state is not None and 
+                            other_obj_prev.updated_state is not None):
+                            # Other vehicle velocity
+                            other_pos_curr = other_obj_curr.updated_state[:3]
+                            other_pos_prev = other_obj_prev.updated_state[:3]
+                            other_velocity = (other_pos_curr - other_pos_prev).cpu()  # (3,)
+                            
+                            # Ego vehicle velocity
+                            ego_prev_ts = sorted([t for t in ego_traj.trajectory.keys() 
+                                                 if t < self.current_timestamp])
+                            if len(ego_prev_ts) >= 2:
+                                ego_obj_curr = ego_traj.trajectory[ego_prev_ts[-1]]
+                                ego_obj_prev = ego_traj.trajectory[ego_prev_ts[-2]]
+                                
+                                if (ego_obj_curr.updated_state is not None and 
+                                    ego_obj_prev.updated_state is not None):
+                                    ego_pos_curr = ego_obj_curr.updated_state[:3]
+                                    ego_pos_prev = ego_obj_prev.updated_state[:3]
+                                    ego_velocity = (ego_pos_curr - ego_pos_prev).cpu()  # (3,)
+                                    
+                                    # Relative velocity
+                                    rel_velocity = other_velocity - ego_velocity
+                                    dvx, dvy, dvz = float(rel_velocity[0]), float(rel_velocity[1]), float(rel_velocity[2])
+                    
+                    # Context: [dx, dy, dz, l, w, h, dry, score, dvx, dvy, dvz]
+                    ctx_entry = torch.tensor([
+                        dx.item(), dy.item(), dz.item(),
+                        other_pos[3].item(), other_pos[4].item(), other_pos[5].item(),
+                        dry.item(), score
+                    ], dtype=torch.float32, device=self.device)
+                    
+                    other_contexts.append((dist.item(), ctx_entry))
+                
+                # Sort by distance (closest first) and take top-N
+                other_contexts.sort(key=lambda x: x[0])
+                other_contexts = [c[1] for c in other_contexts[:max_n]]
+                
+                n_ctx = len(other_contexts)
+                if n_ctx == 0:
+                    ctx = torch.zeros((max_n, 8), dtype=torch.float32, device=self.device)
+                    msk = torch.ones(max_n, dtype=torch.bool, device=self.device)
+                else:
+                    ctx = torch.stack(other_contexts, dim=0)  # (n_ctx, 8)
+                    # Pad to max_n
+                    if n_ctx < max_n:
+                        pad = torch.zeros((max_n - n_ctx, 8), dtype=torch.float32, device=self.device)
+                        ctx = torch.cat([ctx, pad], dim=0)
+                    msk = torch.zeros(max_n, dtype=torch.bool, device=self.device)
+                    msk[n_ctx:] = True
+            
+            context_list.append(ctx)
+            mask_list.append(msk)
+        
+        context = torch.stack(context_list, dim=0)  # (B, max_n, 8)
+        mask = torch.stack(mask_list, dim=0)  # (B, max_n)
+        
+        # EXTENSIVE DEBUG: Log context preparation
+        if not hasattr(self, '_ctx_debug_counter'):
+            self._ctx_debug_counter = 0
+        self._ctx_debug_counter += 1
+        if self._ctx_debug_counter <= 10:
+            valid_per_slot = (~mask).sum(dim=1)
+            total_valid = valid_per_slot.sum().item()
+            print(f"\n{'='*80}")
+            print(f"[CONTEXT PREP] Frame {self.current_timestamp}, Call {self._ctx_debug_counter}")
+            print(f"{'='*80}")
+            print(f"  Active tracks: {len(active_track_ids)}, IDs: {active_track_ids[:10]}")
+            print(f"  Track positions available: {len(track_positions)}")
+            print(f"  Context tensor shape: {context.shape}")
+            print(f"  Total valid context entries: {total_valid}")
+            print(f"  Valid per slot (first 10): {valid_per_slot[:10].tolist()}")
+            print(f"  Context stats: mean={context.mean().item():.4f}, std={context.std().item():.4f}")
+            print(f"  Context range: min={context.min().item():.4f}, max={context.max().item():.4f}")
+            if total_valid > 0:
+                # Show detailed info for first slot with context
+                for i in range(min(3, B)):
+                    if valid_per_slot[i] > 0:
+                        n_valid = valid_per_slot[i].item()
+                        print(f"\n  Slot {i} (ego track {i}): {n_valid} neighbors")
+                        for j in range(min(3, n_valid)):
+                            ctx = context[i, j]
+                            print(f"    Neighbor {j}: dx={ctx[0]:.2f}, dy={ctx[1]:.2f}, dz={ctx[2]:.2f}, ")
+                            print(f"               l={ctx[3]:.2f}, w={ctx[4]:.2f}, h={ctx[5]:.2f}, ")
+                            print(f"               dry={ctx[6]:.3f}, score={ctx[7]:.3f}")
+            print(f"{'='*80}\n")
+            
+        return context, mask
+
+    def _prepare_history_context(self, history_len: int = 5):
+        """
+        Prepare history context tensor (B, K, H, 7) and mask (B, K).
+        
+        Uses the stored trajectory states for other active tracks.
+        For each nearby track, extracts the last H posterior (updated) states.
+        This gives the model information about how other vehicles have been moving,
+        which helps with forecasting and interaction modeling.
+        """
+        # Check if history is enabled
+        ctx_cfg = getattr(self.config, 'CONTEXT', None)
+        if ctx_cfg is None or not getattr(ctx_cfg, 'USE_HISTORY', False):
+            return None, None
+            
+        if not self.active_trajectories:
+            return None, None
+            
+        max_k = int(getattr(ctx_cfg, 'MAX_CONTEXT_OBJECTS', 32))
+        H = int(getattr(ctx_cfg, 'HISTORY_LEN', history_len))
+        
+        lkf_model = self.learnableKF.LKF_model
+        B = lkf_model.batch_size
+        
+        active_track_ids = list(self.active_trajectories.keys())
+        
+        if len(active_track_ids) == 0:
+            return None, None
+        
+        # Build history from trajectory objects (which store full history)
+        entries = []
+        for tid in active_track_ids:
+            traj = self.active_trajectories[tid]
+            
+            if not hasattr(traj, 'trajectory') or len(traj.trajectory) == 0:
+                continue
+            
+            # Get sorted frame indices
+            frames = sorted(traj.trajectory.keys())
+            
+            # Extract last H updated_states (posterior states)
+            seq_list = []
+            for f in frames[-H:]:
+                obj = traj.trajectory[f]
+                # Prefer updated_state (posterior) over predicted_state
+                if obj.updated_state is not None:
+                    state = obj.updated_state[:7]
+                elif obj.predicted_state is not None:
+                    state = obj.predicted_state[:7]
+                else:
+                    continue
+                seq_list.append(torch.as_tensor(state, dtype=torch.float32))
+            
+            if len(seq_list) == 0:
+                continue
+            
+            seq = torch.stack(seq_list, dim=0)  # (t<=H, 7)
+            
+            # Compute distance from origin (current position)
+            current_pos = seq[-1, :2]
+            dist = torch.norm(current_pos)
+            entries.append((tid, dist.item(), seq))
+        
+        if len(entries) == 0:
+            return None, None
+        
+        # Sort by distance (closest first) and take up to max_k
+        entries.sort(key=lambda x: x[1])
+        selected = entries[:max_k]
+        
+        K = len(selected)
+        E = 7  # State dimension
+        
+        # Build the history tensor
+        hist_list = []
+        for tid, _, seq in selected:
+            # Pad to history length H if needed (pad at beginning for older missing frames)
+            if seq.size(0) < H:
+                pad = torch.zeros((H - seq.size(0), E), dtype=seq.dtype, device=self.device)
+                seq = torch.cat([pad, seq.to(self.device)], dim=0)
+            elif seq.size(0) > H:
+                seq = seq[-H:].to(self.device)
+            else:
+                seq = seq.to(self.device)
+            hist_list.append(seq)
+        
+        hist = torch.stack(hist_list, dim=0)  # (K, H, 7)
+        
+        # Expand to batch dimension
+        hist = hist.unsqueeze(0).expand(B, -1, -1, -1)  # (B, K, H, 7)
+        
+        # Pad to max_k if needed
+        if K < max_k:
+            pad = torch.zeros((B, max_k - K, H, E), dtype=hist.dtype, device=hist.device)
+            hist = torch.cat([hist, pad], dim=1)
+            mask = torch.zeros((B, max_k), dtype=torch.bool, device=hist.device)
+            mask[:, K:] = True
+        else:
+            mask = torch.zeros((B, K), dtype=torch.bool, device=hist.device)
+        
+        return hist, mask

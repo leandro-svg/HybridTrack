@@ -6,7 +6,7 @@ MODEL:
 
 DATASET:
   NAME: "KITTIDataset"
-  ROOT: "/FARM/ldibella/HybridTrack"
+  ROOT: "/FARM/ldibella/hybridtrack_original"
   MODE: "train"
   RESIZE: 256
   N_PCD: 1000
@@ -20,7 +20,7 @@ SOLVER:
   LR_SCHEDULE: "cosine"
 
 TRAINER:
-  EPOCH: 1500         # n_steps
+  EPOCH: 3000         # n_steps
   LR: 0.001           # learning rate
   WD: 0.00001         # weight decay
   BATCH_SIZE: 128     # n_batch
@@ -37,3 +37,30 @@ TRAINER:
   ONLINE_TRACKING: true
 
 OUTPUT: "result"
+
+# Context settings for detection and history encoders
+CONTEXT:
+  USE_CONTEXT: true           # Enable context-aware prior (detection context only)
+  USE_HISTORY: false          # Disabled - history context causes OOM (133MB JSON)
+  MAX_CONTEXT_OBJECTS: 32     # Cap per-frame detections considered
+  HISTORY_LEN: 5              # Time steps for other agents (unused when USE_HISTORY=false)
+  DET_FEAT_DIM: 64            # Detection encoder embedding dim
+  HIST_FEAT_DIM: 64           # History encoder embedding dim
+  ATTN_HEADS: 4               # Cross-attention heads
+  DISTANCE_THRESH: 30.0       # Max meters for context filtering (reduced to filter noise)
+  SCORE_THRESH: 0.3           # Min detection score to include
+  TOPK: 16                    # Top-K selection before padding
+  DIST_ALPHA: 0.6             # Weight for distance in hybrid rank
+  SCORE_ALPHA: 0.4            # Weight for score in hybrid rank
+  
+  # Training noise to simulate inference conditions (CRITICAL: MUST BE ENABLED)
+  TRAIN_NOISE:
+    ENABLE: true              # Enable noise corruption during training
+    DROPOUT_PROB: 0.3         # 30% chance to drop each detection
+    POS_NOISE_STD: 0.2        # 20cm position noise (meters)
+    SIZE_NOISE_STD: 0.1       # 10cm size noise (meters)
+    ROT_NOISE_STD: 0.05       # ~3 degree rotation noise (radians)
+    SCORE_NOISE_STD: 0.1      # 10% score variation
+  
+  # Context dropout for robustness during training
+  CTX_DROPOUT: 0.3            # 30% chance to drop entire context per sample

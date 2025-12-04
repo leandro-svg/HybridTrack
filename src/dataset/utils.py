@@ -31,20 +31,32 @@ def DataGen(cfg, SysModel_data: SystemModel, train_dataloader: torch.utils.data.
     """
     # Generate training data
     SysModel_data.GenerateBatch(cfg, train_dataloader, cfg.TRAINER.N_E, randomInit=cfg.TRAINER.RANDOMINIT_TRAIN)
-    train_input: List[torch.Tensor] = SysModel_data.Input
-    train_target: List[torch.Tensor] = SysModel_data.Target
+    train_input: List[torch.Tensor] = list(SysModel_data.Input)
+    train_target: List[torch.Tensor] = list(SysModel_data.Target)
     train_init: Optional[torch.Tensor] = SysModel_data.m1x_0_batch
+    train_context: List = list(SysModel_data.Context) if hasattr(SysModel_data, 'Context') else []
+    train_history: List = list(SysModel_data.HistoryContext) if hasattr(SysModel_data, 'HistoryContext') else []
 
     # Generate cross-validation data
     SysModel_data.GenerateBatch(cfg, val_dataloader, cfg.TRAINER.N_CV, randomInit=cfg.TRAINER.RANDOMINIT_CV)
-    cv_input: List[torch.Tensor] = SysModel_data.Input
-    cv_target: List[torch.Tensor] = SysModel_data.Target
+    cv_input: List[torch.Tensor] = list(SysModel_data.Input)
+    cv_target: List[torch.Tensor] = list(SysModel_data.Target)
     cv_init: Optional[torch.Tensor] = SysModel_data.m1x_0_batch
+    cv_context: List = list(SysModel_data.Context) if hasattr(SysModel_data, 'Context') else []
+    cv_history: List = list(SysModel_data.HistoryContext) if hasattr(SysModel_data, 'HistoryContext') else []
 
     # Save the generated data
-    # The saved tuple contains: (training inputs, training targets, validation inputs, validation targets, training initial states, validation initial states)
-    torch.save([train_input, train_target, cv_input, cv_target, train_init, cv_init], fileName)
+    # Format: [train_input, train_target, cv_input, cv_target, train_init, cv_init, 
+    #          train_context, train_history, cv_context, cv_history]
+    payload = [
+        train_input, train_target, cv_input, cv_target, train_init, cv_init,
+        train_context, train_history, cv_context, cv_history
+    ]
+    torch.save(payload, fileName)
     print(f"Training and validation data saved to {fileName}")
+    print(f"  Train samples: {len(train_input)}, CV samples: {len(cv_input)}")
+    print(f"  Train context frames: {len(train_context)}, Train history: {len(train_history)}")
+    print(f"  CV context frames: {len(cv_context)}, CV history: {len(cv_history)}")
 
 def DataGen_eval(cfg, SysModel_data: SystemModel, test_dataloader: torch.utils.data.DataLoader, fileName: str) -> None:
     """

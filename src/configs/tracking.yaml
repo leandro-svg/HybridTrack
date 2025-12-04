@@ -34,3 +34,28 @@ latency: 1
 in_mult_LKF: 16
 out_mult_LKF: 32
 n_batch: 1
+
+# Context settings (runtime)
+CONTEXT:
+  USE_CONTEXT: true            # Enable detection context
+  USE_HISTORY: false           # Disabled for now
+  MAX_CONTEXT_OBJECTS: 16      # Max other vehicles to consider
+  HISTORY_LEN: 5               # Number of timesteps for history
+  DISTANCE_THRESH: 30.0        # Max distance (m) for context vehicles (reduced to filter noise)
+  SCORE_THRESH: 0.3            # Min detection score
+  TOPK: 16                     # Top-K selection
+  
+  # Training noise configuration (not used during tracking, only for reference)
+  TRAIN_NOISE:
+    ENABLE: false             # Disabled during inference
+    DROPOUT_PROB: 0.3
+    POS_NOISE_STD: 0.2
+    SIZE_NOISE_STD: 0.1
+    ROT_NOISE_STD: 0.05
+    SCORE_NOISE_STD: 0.1
+  
+  # No context dropout during tracking (only during training)
+  CTX_DROPOUT: 0.0
+  
+  DIST_ALPHA: 0.6              # Distance weight in ranking
+  SCORE_ALPHA: 0.4             # Score weight in ranking

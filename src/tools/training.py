@@ -62,7 +62,9 @@ class TrainingPipeline:
 
     def NNTrain(self, SysModel, cv_input, cv_target, train_input, train_target, path_results, cfg,
                 MaskOnState=False, randomInit=False, cv_init=None, train_init=None,
-                train_lengthMask=None, cv_lengthMask=None):
+                train_lengthMask=None, cv_lengthMask=None,
+                train_context=None, cv_context=None,
+                train_history=None, cv_history=None):
         """
         Train LKF model.
         """
@@ -108,10 +110,107 @@ class TrainingPipeline:
                     train_target_batch[ii, :, idx] = elem
             self.model.LKF_model.InitSequence(initializer, self.ss_model.T)
             for t in range(self.ss_model.T):
+                # Optional detection context per batch/time
+                det_ctx_batch = None
+                det_mask_batch = None
+                hist_ctx_batch = None
+                hist_mask_batch = None
+                
+                use_ctx = getattr(cfg, 'CONTEXT', None)
+                if bool(getattr(use_ctx, 'USE_CONTEXT', False)) and train_context is not None:
+                    # Collect per-sample frame contexts and pad
+                    per_sample_ctx = []
+                    max_n = 0
+                    for ii, index in enumerate(n_e):
+                        try:
+                            frames = train_context[index]
+                            ctx = frames[t] if t < len(frames) else None
+                            if ctx is None or (torch.is_tensor(ctx) and ctx.numel() == 0):
+                                ctx = torch.zeros((0, 8), dtype=torch.float32)
+                            elif not torch.is_tensor(ctx):
+                                ctx = torch.tensor(ctx, dtype=torch.float32)
+                        except Exception:
+                            ctx = torch.zeros((0, 8), dtype=torch.float32)
+                        per_sample_ctx.append(ctx)
+                        max_n = max(max_n, ctx.size(0) if ctx.dim() > 0 else 0)
+                    
+                    if max_n > 0:
+                        padded = []
+                        mask = torch.zeros((self.N_B, max_n), dtype=torch.bool)
+                        for ii, ctx in enumerate(per_sample_ctx):
+                            n_ctx = ctx.size(0) if ctx.dim() > 0 and ctx.numel() > 0 else 0
+                            if n_ctx < max_n:
+                                pad = torch.zeros((max_n - n_ctx, 8), dtype=torch.float32)
+                                if n_ctx > 0:
+                                    ctx = torch.cat([ctx, pad], dim=0)
+                                else:
+                                    ctx = pad
+                                mask[ii, n_ctx:] = True  # Mask padding positions
+                            padded.append(ctx)
+                        det_ctx_batch = torch.stack(padded, dim=0).to(self.device)
+                        det_mask_batch = mask.to(self.device)
+                        
+                        # DEBUG: Log training context statistics
+                        if not hasattr(self, '_train_ctx_debug_counter'):
+                            self._train_ctx_debug_counter = 0
+                        self._train_ctx_debug_counter += 1
+                        if self._train_ctx_debug_counter <= 5:
+                            print(f"\n[DEBUG TRAIN CTX] step {self._train_ctx_debug_counter}:")
+                            print(f"  det_ctx_batch shape: {det_ctx_batch.shape}")
+                            print(f"  det_ctx xyz mean: {det_ctx_batch[:,:,:3].mean().item():.4f}, std: {det_ctx_batch[:,:,:3].std().item():.4f}")
+                            print(f"  det_ctx score mean: {det_ctx_batch[:,:,7].mean().item():.4f}")
+                            print(f"  det_mask sum (padded): {det_mask_batch.sum().item()}")
+                
+                # Optional history context per batch/time
+                if bool(getattr(use_ctx, 'USE_HISTORY', False)) and train_history is not None:
+                    # Build history context: (B, K, H, 7) with mask (B, K)
+                    per_sample_hist = []
+                    per_sample_hist_mask = []
+                    for ii, index in enumerate(n_e):
+                        try:
+                            hist_dict = train_history[index]
+                            if hist_dict and 'history_per_frame' in hist_dict:
+                                frame_hist = hist_dict['history_per_frame'][t]
+                                histories = torch.tensor(frame_hist['histories'], dtype=torch.float32)  # (K, H, 7)
+                                valid_masks = torch.tensor(frame_hist['valid_masks'], dtype=torch.bool)  # (K, H)
+                                # Compute agent-level mask: True if all time steps are invalid (padded agent)
+                                agent_mask = ~valid_masks.any(dim=1)  # (K,)
+                            else:
+                                # Empty history
+                                histories = torch.zeros((1, 5, 7), dtype=torch.float32)
+                                agent_mask = torch.ones(1, dtype=torch.bool)
+                        except Exception:
+                            histories = torch.zeros((1, 5, 7), dtype=torch.float32)
+                            agent_mask = torch.ones(1, dtype=torch.bool)
+                        per_sample_hist.append(histories)
+                        per_sample_hist_mask.append(agent_mask)
+                    
+                    # Pad to max K across batch
+                    max_k = max(h.size(0) for h in per_sample_hist)
+                    H = per_sample_hist[0].size(1)
+                    padded_hist = []
+                    padded_mask = []
+                    for histories, agent_mask in zip(per_sample_hist, per_sample_hist_mask):
+                        K = histories.size(0)
+                        if K < max_k:
+                            pad_hist = torch.zeros((max_k - K, H, 7), dtype=histories.dtype)
+                            histories = torch.cat([histories, pad_hist], dim=0)
+                            pad_mask = torch.ones(max_k - K, dtype=torch.bool)
+                            agent_mask = torch.cat([agent_mask, pad_mask], dim=0)
+                        padded_hist.append(histories)
+                        padded_mask.append(agent_mask)
+                    
+                    hist_ctx_batch = torch.stack(padded_hist, dim=0).to(self.device)  # (B, K, H, 7)
+                    hist_mask_batch = torch.stack(padded_mask, dim=0).to(self.device)  # (B, K)
+                
                 if cfg.TRAINER.get('ONLINE_TRACKING', False):
-                    model_output, state_prior, _ = self.model(y_training_batch[:, :, t])
+                    model_output, state_prior, _ = self.model(y_training_batch[:, :, t],
+                                                              det_context=det_ctx_batch, det_mask=det_mask_batch,
+                                                              hist_context=hist_ctx_batch, hist_mask=hist_mask_batch)
                 else:
-                    model_output, state_prior, _ = self.model(y_training_batch[:, :, t], y_training_batch)
+                    model_output, state_prior, _ = self.model(y_training_batch[:, :, t], y_training_batch,
+                                                              det_context=det_ctx_batch, det_mask=det_mask_batch,
+                                                              hist_context=hist_ctx_batch, hist_mask=hist_mask_batch)
                 x_out_training_batch[:, :, t] = model_output.squeeze(-1)
                 state_out_training_batch[:, :, t] = state_prior.squeeze(-1)
             attributes = ['x', 'y', 'z', 'l', 'w', 'h', 'ry']
@@ -149,10 +248,90 @@ class TrainingPipeline:
                         cv_target_batch[index, :, idx] = elem
                 self.model.LKF_model.InitSequence(initializer_cv, self.ss_model.T)
                 for t in range(self.ss_model.T):
+                    det_ctx_batch = None
+                    det_mask_batch = None
+                    hist_ctx_batch = None
+                    hist_mask_batch = None
+                    
+                    use_ctx = getattr(cfg, 'CONTEXT', None)
+                    if bool(getattr(use_ctx, 'USE_CONTEXT', False)) and cv_context is not None:
+                        per_sample_ctx = []
+                        max_n = 0
+                        for index in range(self.N_CV):
+                            try:
+                                frames = cv_context[index]
+                                ctx = frames[t] if t < len(frames) else None
+                                if ctx is None or (torch.is_tensor(ctx) and ctx.numel() == 0):
+                                    ctx = torch.zeros((0, 8), dtype=torch.float32)
+                                elif not torch.is_tensor(ctx):
+                                    ctx = torch.tensor(ctx, dtype=torch.float32)
+                            except Exception:
+                                ctx = torch.zeros((0, 8), dtype=torch.float32)
+                            per_sample_ctx.append(ctx)
+                            max_n = max(max_n, ctx.size(0) if ctx.dim() > 0 else 0)
+                        
+                        if max_n > 0:
+                            padded = []
+                            mask = torch.zeros((self.N_CV, max_n), dtype=torch.bool)
+                            for ii, ctx in enumerate(per_sample_ctx):
+                                n_ctx = ctx.size(0) if ctx.dim() > 0 and ctx.numel() > 0 else 0
+                                if n_ctx < max_n:
+                                    pad = torch.zeros((max_n - n_ctx, 8), dtype=torch.float32)
+                                    if n_ctx > 0:
+                                        ctx = torch.cat([ctx, pad], dim=0)
+                                    else:
+                                        ctx = pad
+                                    mask[ii, n_ctx:] = True  # Mask padding positions
+                                padded.append(ctx)
+                            det_ctx_batch = torch.stack(padded, dim=0).to(self.device)
+                            det_mask_batch = mask.to(self.device)
+                    
+                    # Optional history context for validation
+                    if bool(getattr(use_ctx, 'USE_HISTORY', False)) and cv_history is not None:
+                        per_sample_hist = []
+                        per_sample_hist_mask = []
+                        for index in range(self.N_CV):
+                            try:
+                                hist_dict = cv_history[index]
+                                if hist_dict and 'history_per_frame' in hist_dict:
+                                    frame_hist = hist_dict['history_per_frame'][t]
+                                    histories = torch.tensor(frame_hist['histories'], dtype=torch.float32)
+                                    valid_masks = torch.tensor(frame_hist['valid_masks'], dtype=torch.bool)
+                                    agent_mask = ~valid_masks.any(dim=1)
+                                else:
+                                    histories = torch.zeros((1, 5, 7), dtype=torch.float32)
+                                    agent_mask = torch.ones(1, dtype=torch.bool)
+                            except Exception:
+                                histories = torch.zeros((1, 5, 7), dtype=torch.float32)
+                                agent_mask = torch.ones(1, dtype=torch.bool)
+                            per_sample_hist.append(histories)
+                            per_sample_hist_mask.append(agent_mask)
+                        
+                        max_k = max(h.size(0) for h in per_sample_hist)
+                        H = per_sample_hist[0].size(1)
+                        padded_hist = []
+                        padded_mask = []
+                        for histories, agent_mask in zip(per_sample_hist, per_sample_hist_mask):
+                            K = histories.size(0)
+                            if K < max_k:
+                                pad_hist = torch.zeros((max_k - K, H, 7), dtype=histories.dtype)
+                                histories = torch.cat([histories, pad_hist], dim=0)
+                                pad_mask = torch.ones(max_k - K, dtype=torch.bool)
+                                agent_mask = torch.cat([agent_mask, pad_mask], dim=0)
+                            padded_hist.append(histories)
+                            padded_mask.append(agent_mask)
+                        
+                        hist_ctx_batch = torch.stack(padded_hist, dim=0).to(self.device)
+                        hist_mask_batch = torch.stack(padded_mask, dim=0).to(self.device)
+                    
                     if cfg.TRAINER.get('ONLINE_TRACKING', False):
-                        model_output, state_prior, _ = self.model(y_cv_batch[:, :, t])
+                        model_output, state_prior, _ = self.model(y_cv_batch[:, :, t],
+                                                                  det_context=det_ctx_batch, det_mask=det_mask_batch,
+                                                                  hist_context=hist_ctx_batch, hist_mask=hist_mask_batch)
                     else:
-                        model_output, state_prior, _ = self.model(y_cv_batch[:, :, t], y_cv_batch)
+                        model_output, state_prior, _ = self.model(y_cv_batch[:, :, t], y_cv_batch,
+                                                                  det_context=det_ctx_batch, det_mask=det_mask_batch,
+                                                                  hist_context=hist_ctx_batch, hist_mask=hist_mask_batch)
                     x_out_cv_batch[:, :, t] = model_output.squeeze(-1)
                     state_out_cv_batch[:, :, t] = state_prior.squeeze(-1)
                 losses_cv = self._calculate_losses(cv_target_batch, state_out_cv_batch, x_out_cv_batch, attributes)

@@ -8,7 +8,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:4090:1
-#SBATCH --mem=48G
+#SBATCH --mem=12G
 
 set -euxo pipefail
 
@@ -28,7 +28,7 @@ fi
 source "$HYBRIDTRACK_VENV/bin/activate"
 python --version
 
-cd ~/HybridTrack
+cd ~/hybridtrack_original
 
 # Ensure requirements are installed
 pip install --upgrade pip

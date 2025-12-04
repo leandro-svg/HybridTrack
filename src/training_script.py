@@ -109,8 +109,35 @@ if train_bool:
     train_target = loaded_data[1]
     cv_input = loaded_data[2]
     cv_target = loaded_data[3]
+    # New format: [train_input, train_target, cv_input, cv_target, train_init, cv_init,
+    #              train_context, train_history, cv_context, cv_history]
+    train_context = loaded_data[6] if len(loaded_data) > 6 else None
+    train_history = loaded_data[7] if len(loaded_data) > 7 else None
+    cv_context = loaded_data[8] if len(loaded_data) > 8 else None
+    cv_history = loaded_data[9] if len(loaded_data) > 9 else None
+    
     logging.info(f"Number of training samples: {len(train_input)}")
     logging.info(f"Number of cross-validation samples: {len(cv_input)}")
+    if train_context is not None:
+        non_empty_ctx = sum(1 for c in train_context if c and len(c) > 0)
+        logging.info(f"Loaded detection context for {non_empty_ctx}/{len(train_context)} training samples")
+    if train_history is not None:
+        non_empty_hist = sum(1 for h in train_history if h and 'history_per_frame' in h)
+        logging.info(f"Loaded history context for {non_empty_hist}/{len(train_history)} training samples")
+    if cv_context is not None:
+        non_empty_cv_ctx = sum(1 for c in cv_context if c and len(c) > 0)
+        logging.info(f"Loaded detection context for {non_empty_cv_ctx}/{len(cv_context)} CV samples")
+    if cv_history is not None:
+        non_empty_cv_hist = sum(1 for h in cv_history if h and 'history_per_frame' in h)
+        logging.info(f"Loaded history context for {non_empty_cv_hist}/{len(cv_history)} CV samples")
+    
+    # Handle backward compatibility: create dummy contexts if needed
+    if train_context is not None and cv_context is None:
+        logging.warning("Training uses context but cv_context is None - creating empty context for CV")
+        cv_context = [[torch.zeros((0, 8), dtype=torch.float32) for _ in range(cfg.DATASET.SEQ_LEN)] for _ in range(len(cv_input))]
+    if train_history is not None and cv_history is None:
+        logging.warning("Training uses history but cv_history is None - creating empty history for CV")
+        cv_history = [{} for _ in range(len(cv_input))]
 else:
     loaded_data = torch.load(data_file_path, map_location='cpu')
     test_input = loaded_data[0]
@@ -125,6 +152,13 @@ LKF_Pipeline = TrainingPipeline(strTime, "LKF", "LKF")
 LKF_Pipeline.set_ss_model(sys_model_partial)
 LKF_Pipeline.set_model(LKF_model)
 LKF_Pipeline.set_training_params(cfg)
+
+# Diagnostic logging for context usage
+if train_bool:
+    use_context = hasattr(LKF_model.LKF_model, 'use_context') and LKF_model.LKF_model.use_context
+    logging.info(f"[Diagnostic] USE_CONTEXT={use_context}, train_context_present={train_context is not None}, cv_context_present={cv_context is not None}")
+    if use_context and (train_context is None or cv_context is None):
+        logging.error("WARNING: Context enabled but context data missing - performance will degrade!")
 type_network = 'hybridtrack'
 type_tracking = 'online'
 
@@ -153,7 +187,11 @@ if train_bool:
                                                                                                             cv_target,
                                                                                                             train_input,
                                                                                                             train_target,
-                                                                                                            path_results, cfg)
+                                                                                                            path_results, cfg,
+                                                                                                            train_context=train_context,
+                                                                                                            cv_context=cv_context,
+                                                                                                            train_history=train_history,
+                                                                                                            cv_history=cv_history)
 else:
     path_results_weight = os.path.join(path_results, 'weights')
     path_results_val = os.path.join(path_results, 'val_test')
